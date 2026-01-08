@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Diagnostics 3-couples{% endblock %}
+
+{% block content %}
+
+<a href="{{ url_for('results', run_id=run_id) }}" class="btn btn-secondary">
+  ⬅ Retour aux résultats
+</a>
+
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <a href="{{ url_for('index') }}" class="btn btn-outline-dark btn-sm">← Nouveau backtest</a>
+</div>
+
+<div class="mb-3">
+  <h2 class="mb-1">Diagnostics — 3 couples</h2>
+  <div class="text-muted">
+    Période : <strong>{{ period_ui }}</strong> — Split : <strong>{{ split_date }}</strong> —
+    Best : <strong>{{ best }}</strong>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header">Sharpe IS (calibration)</div>
+  <div class="card-body"><div id="is_bar"></div></div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header">Robustesse — Sharpe OOS vs IS</div>
+  <div class="card-body"><div id="scatter"></div></div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header">Table</div>
+  <div class="card-body table-responsive">
+    <table class="table align-middle">
+      <thead>
+        <tr>
+          <th>Triple</th>
+          <th>IS Sharpe</th><th>IS CAGR</th><th>IS Vol</th><th>IS MDD</th>
+          <th>OOS Sharpe</th><th>OOS CAGR</th><th>OOS Vol</th><th>OOS MDD</th>
+          <th>TO mean</th><th>TO p95</th>
+          <th>Best</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for r in table %}
+        <tr class="{% if r.best == 'yes' %}best-row{% endif %}">
+          <td><strong>{{ r.triple }}</strong></td>
+          <td>{{ r.is_sharpe }}</td><td>{{ r.is_ann_return }}</td><td>{{ r.is_ann_vol }}</td><td>{{ r.is_mdd }}</td>
+          <td>{{ r.oos_sharpe }}</td><td>{{ r.oos_ann_return }}</td><td>{{ r.oos_ann_vol }}</td><td>{{ r.oos_mdd }}</td>
+          <td>{{ r.oos_turnover_mean }}</td><td>{{ r.oos_turnover_p95 }}</td>
+          <td>{% if r.best == 'yes' %}✅{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var fig_is = {{ graphJSON_is | safe }};
+  Plotly.newPlot('is_bar', fig_is.data, fig_is.layout);
+
+  var fig_sc = {{ graphJSON_scatter | safe }};
+  Plotly.newPlot('scatter', fig_sc.data, fig_sc.layout);
+</script>
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Résultats{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <a href="{{ url_for('index') }}" class="btn btn-outline-dark btn-sm">← Nouveau backtest</a>
+  <a href="{{ url_for('diagnostics', run_id=run_id) }}" class="btn btn-outline-primary btn-sm">Voir Diagnostics MA →</a>
+</div>
+
+<div class="mb-3">
+  <h2 class="mb-1">Résultats (out-of-sample)</h2>
+  <div class="text-muted">
+    Période : <strong>{{ stats.period_ui }}</strong> —
+    Split : <strong>{{ stats.split_rule }}</strong> —
+    Date OOS : <strong>{{ stats.split_date }}</strong><br>
+    Triple MA sélectionné : <strong>{{ stats.best_triple }}</strong>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header">KPIs (sur la partie Test / OOS)</div>
+  <div class="card-body">
+    <div class="row g-3">
+
+      <div class="col-lg-6">
+        <div class="p-3 border rounded-4 h-100">
+          <h5 class="mb-3">Trend Following</h5>
+          <div class="row g-3">
+            <div class="col-6"><div class="kpi p-3"><div class="label">Perf totale</div><div class="value">{{ stats.trend_total_return }}</div></div></div>
+            <div class="col-6"><div class="kpi p-3"><div class="label">Perf annualisée</div><div class="value">{{ stats.trend_ann_return }}</div></div></div>
+            <div class="col-6"><div class="kpi p-3"><div class="label">Vol annualisée</div><div class="value">{{ stats.trend_ann_vol }}</div></div></div>
+            <div class="col-6"><div class="kpi p-3"><div class="label">Sharpe</div><div class="value">{{ stats.trend_sharpe }}</div></div></div>
+            <div class="col-6"><div class="kpi p-3"><div class="label">Max Drawdown</div><div class="value">{{ stats.trend_mdd }}</div></div></div>
+            <div class="col-6"><div class="kpi p-3"><div class="label">Bêta vs B&H</div><div class="value">{{ stats.beta_vs_bh }}</div></div></div>
+            <div class="col-6"><div class="kpi p-3"><div class="label">Alpha annualisé</div><div class="value">{{ stats.alpha_ann }}</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <div class="p-3 border rounded-4 h-100">
+          <h5 class="mb-3">Buy & Hold (Equal-Weight)</h5>
+          <div class="row g-3">
+            <div class="col-6"><div class="kpi p-3"><div class="label">Perf totale</div><div class="value">{{ stats.bh_total_return }}</div></div></div>
+            <div class="col-6"><div class="kpi p-3"><div class="label">Perf annualisée</div><div class="value">{{ stats.bh_ann_return }}</div></div></div>
+            <div class="col-6"><div class="kpi p-3"><div class="label">Vol annualisée</div><div class="value">{{ stats.bh_ann_vol }}</div></div></div>
+            <div class="col-6"><div class="kpi p-3"><div class="label">Sharpe</div><div class="value">{{ stats.bh_sharpe }}</div></div></div>
+            <div class="col-6"><div class="kpi p-3"><div class="label">Max Drawdown</div><div class="value">{{ stats.bh_mdd }}</div></div></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div class="text-muted small mt-3">
+      KPIs calculés uniquement sur la partie OOS (test), pour éviter le biais d’optimisation.
+    </div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header">Equity curve (toute la période) + split OOS</div>
+  <div class="card-body"><div id="equity_div"></div></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var fig_equity = {{ graphJSON_equity | safe }};
+  Plotly.newPlot('equity_div', fig_equity.data, fig_equity.layout);
+</script>
+{% endblock %}

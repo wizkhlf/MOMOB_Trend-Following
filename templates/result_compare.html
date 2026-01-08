@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Résultats{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <a href="{{ url_for('index') }}" class="btn btn-outline-dark btn-sm">← Nouveau backtest</a>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('diagnostics_1', run_id=run_id) }}" class="btn btn-outline-primary btn-sm">Diagnostics 1-couple</a>
+    <a href="{{ url_for('diagnostics_3', run_id=run_id) }}" class="btn btn-outline-primary btn-sm">Diagnostics 3-couples</a>
+  </div>
+</div>
+
+<div class="mb-3">
+  <h2 class="mb-1">Comparatif out-of-sample</h2>
+  <div class="text-muted">
+    Période : <strong>{{ stats.period_ui }}</strong> —
+    Split : <strong>{{ stats.split_rule }}</strong> —
+    Date split : <strong>{{ stats.split_date }}</strong><br>
+    Jours total : <strong>{{ stats.total_days }}</strong> —
+    Jours OOS utilisés : <strong>{{ stats.oos_days }}</strong><br>
+    1-couple choisi : <strong>{{ stats.best_pair }}</strong> ({{ stats.tested1 }}/{{ stats.total1 }} testés) —
+    3-couples choisi : <strong>{{ stats.best_triple }}</strong> ({{ stats.tested3 }}/{{ stats.total3 }} testés)
+  </div>
+</div>
+
+<!-- ✅ CHART EN HAUT (avant KPIs) -->
+<div class="card shadow-sm mb-4">
+  <div class="card-header">Equity curves (période complète) + split</div>
+  <div class="card-body"><div id="equity_div"></div></div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header">KPIs (OOS uniquement)</div>
+  <div class="card-body">
+    <div class="row g-3">
+
+      <div class="col-lg-4">
+        <h6 class="text-muted mb-2">Trend 1-couple</h6>
+        <div class="row g-2">
+          <div class="col-6"><div class="kpi p-3"><div class="label">Perf totale</div><div class="value">{{ stats.t1_total }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">CAGR</div><div class="value">{{ stats.t1_ann }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Vol</div><div class="value">{{ stats.t1_vol }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Sharpe</div><div class="value">{{ stats.t1_sh }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Max DD</div><div class="value">{{ stats.t1_mdd }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Turnover (moy)</div><div class="value">{{ stats.t1_to_mean }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Turnover (p95)</div><div class="value">{{ stats.t1_to_p95 }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Beta vs B&H</div><div class="value">{{ stats.t1_beta }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Alpha ann.</div><div class="value">{{ stats.t1_alpha }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Sharpe blocs (moy)</div><div class="value">{{ stats.t1_sh_blocks_mean }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Sharpe blocs (std)</div><div class="value">{{ stats.t1_sh_blocks_std }}</div></div></div>
+        </div>
+      </div>
+
+      <div class="col-lg-4">
+        <h6 class="text-muted mb-2">Trend 3-couples</h6>
+        <div class="row g-2">
+          <div class="col-6"><div class="kpi p-3"><div class="label">Perf totale</div><div class="value">{{ stats.t3_total }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">CAGR</div><div class="value">{{ stats.t3_ann }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Vol</div><div class="value">{{ stats.t3_vol }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Sharpe</div><div class="value">{{ stats.t3_sh }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Max DD</div><div class="value">{{ stats.t3_mdd }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Turnover (moy)</div><div class="value">{{ stats.t3_to_mean }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Turnover (p95)</div><div class="value">{{ stats.t3_to_p95 }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Beta vs B&H</div><div class="value">{{ stats.t3_beta }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Alpha ann.</div><div class="value">{{ stats.t3_alpha }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Sharpe blocs (moy)</div><div class="value">{{ stats.t3_sh_blocks_mean }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Sharpe blocs (std)</div><div class="value">{{ stats.t3_sh_blocks_std }}</div></div></div>
+        </div>
+      </div>
+
+      <div class="col-lg-4">
+        <h6 class="text-muted mb-2">Benchmark B&H (EW)</h6>
+        <div class="row g-2">
+          <div class="col-6"><div class="kpi p-3"><div class="label">Perf totale</div><div class="value">{{ stats.bh_total }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">CAGR</div><div class="value">{{ stats.bh_ann }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Vol</div><div class="value">{{ stats.bh_vol }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Sharpe</div><div class="value">{{ stats.bh_sh }}</div></div></div>
+          <div class="col-6"><div class="kpi p-3"><div class="label">Max DD</div><div class="value">{{ stats.bh_mdd }}</div></div></div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="text-muted small mt-3">
+      OOS = partie test après split (walk-forward). Turnover = somme des variations absolues de poids (daily).
+    </div>
+  </div>
+</div>
+
+<div style="margin: 12px 0;">
+  <a href="{{ url_for('download_weights', run_id=run_id, model='pair') }}">
+    Télécharger poids du jour (1-couple)
+  </a>
+  &nbsp;|&nbsp;
+  <a href="{{ url_for('download_weights', run_id=run_id, model='triple') }}">
+    Télécharger poids du jour (3-couples)
+  </a>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header">Stabilité OOS — 3 blocs (audit-proof)</div>
+  <div class="card-body">
+    <div class="row g-3">
+
+      <div class="col-lg-6">
+        <h6 class="text-muted mb-2">Trend 1-couple — blocs valides : {{ stats.t1_valid_blocks }}/3</h6>
+        <div class="row g-2">
+          <div class="col-4"><div class="kpi p-3"><div class="label">Bloc 1 Sharpe</div><div class="value">{{ stats.t1_sh_b1 }}</div></div></div>
+          <div class="col-4"><div class="kpi p-3"><div class="label">Bloc 2 Sharpe</div><div class="value">{{ stats.t1_sh_b2 }}</div></div></div>
+          <div class="col-4"><div class="kpi p-3"><div class="label">Bloc 3 Sharpe</div><div class="value">{{ stats.t1_sh_b3 }}</div></div></div>
+        </div>
+        <div class="text-muted small mt-2">
+          Un bloc est “valide” si ≥ {{ stats.min_block_days }} jours.
+        </div>
+      </div>
+
+      <div class="col-lg-6">
+        <h6 class="text-muted mb-2">Trend 3-couples — blocs valides : {{ stats.t3_valid_blocks }}/3</h6>
+        <div class="row g-2">
+          <div class="col-4"><div class="kpi p-3"><div class="label">Bloc 1 Sharpe</div><div class="value">{{ stats.t3_sh_b1 }}</div></div></div>
+          <div class="col-4"><div class="kpi p-3"><div class="label">Bloc 2 Sharpe</div><div class="value">{{ stats.t3_sh_b2 }}</div></div></div>
+          <div class="col-4"><div class="kpi p-3"><div class="label">Bloc 3 Sharpe</div><div class="value">{{ stats.t3_sh_b3 }}</div></div></div>
+        </div>
+        <div class="text-muted small mt-2">
+          Un bloc est “valide” si ≥ {{ stats.min_block_days }} jours.
+        </div>
+      </div>
+
+    </div>
+
+    <div class="text-muted small mt-3">
+      Si la période est courte (ex: 1Y), certains blocs peuvent être trop courts : affichés en “—”.
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var fig_equity = {{ graphJSON_equity | safe }};
+  Plotly.newPlot('equity_div', fig_equity.data, fig_equity.layout);
+</script>
+{% endblock %}

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Diagnostics MA{% endblock %}
+
+{% block content %}
+
+<a href="{{ url_for('results', run_id=run_id) }}" class="btn btn-secondary">
+  ⬅ Retour aux résultats
+</a>
+
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <a href="{{ url_for('index') }}" class="btn btn-outline-dark btn-sm">← Nouveau backtest</a>
+</div>
+
+<div class="mb-3">
+  <h2 class="mb-1">Diagnostics — Couples de moyennes mobiles</h2>
+  <div class="text-muted">
+    Période : <strong>{{ period_ui }}</strong> — Split OOS : <strong>{{ split_date }}</strong> —
+    Couple sélectionné (meilleur Sharpe IS) : <strong>{{ best_pair }}</strong>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header">Preuves — Sharpe in-sample (calibration)</div>
+  <div class="card-body">
+    <div id="is_bar"></div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header">Robustesse — Sharpe out-of-sample vs in-sample</div>
+  <div class="card-body">
+    <div id="scatter"></div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-4">
+  <div class="card-header">Table complète (15 couples)</div>
+  <div class="card-body table-responsive">
+    <table class="table align-middle">
+      <thead>
+        <tr>
+          <th>Couple</th>
+          <th>IS Ann Ret</th>
+          <th>IS Vol</th>
+          <th>IS Sharpe</th>
+          <th>IS MDD</th>
+          <th>OOS Ann Ret</th>
+          <th>OOS Vol</th>
+          <th>OOS Sharpe</th>
+          <th>OOS MDD</th>
+          <th>Best</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in table %}
+          <tr class="{% if r.is_best == 'yes' %}best-row{% endif %}">
+            <td><strong>{{ r.pair }}</strong></td>
+            <td>{{ r.is_ann_return }}</td>
+            <td>{{ r.is_ann_vol }}</td>
+            <td>{{ r.is_sharpe }}</td>
+            <td>{{ r.is_mdd }}</td>
+            <td>{{ r.oos_ann_return }}</td>
+            <td>{{ r.oos_ann_vol }}</td>
+            <td>{{ r.oos_sharpe }}</td>
+            <td>{{ r.oos_mdd }}</td>
+            <td>{% if r.is_best == 'yes' %}✅{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="text-muted small">
+      IS = In-sample (calibration). OOS = Out-of-sample (test).
+      Le couple est choisi uniquement sur IS, puis évalué “vraiment” sur OOS.
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  var fig_is = {{ graphJSON_is | safe }};
+  Plotly.newPlot('is_bar', fig_is.data, fig_is.layout);
+
+  var fig_sc = {{ graphJSON_scatter | safe }};
+  Plotly.newPlot('scatter', fig_sc.data, fig_sc.layout);
+</script>
+{% endblock %}

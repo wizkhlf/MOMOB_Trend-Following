@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Configurer{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-10 col-xl-9">
+
+    {% if message %}
+      <div class="alert alert-danger">{{ message }}</div>
+    {% endif %}
+
+    <div class="card shadow-sm mb-4">
+      <div class="card-header">Paramètres</div>
+      <div class="card-body">
+
+        <div class="text-muted small mb-3">
+          Backtest comparatif <strong>out-of-sample</strong> : 1-couple (15 candidats autour de 20/100) vs 3-couples (15 triples).
+          Filtrage automatique si la période est trop courte.
+        </div>
+
+        <form method="POST" action="{{ url_for('trend') }}">
+
+          <h5 class="mb-3">1) Période</h5>
+          <div class="btn-group mb-4" role="group">
+            <input type="radio" class="btn-check" name="period" id="p1y" value="1Y">
+            <label class="btn btn-outline-primary" for="p1y">1Y</label>
+
+            <input type="radio" class="btn-check" name="period" id="p2y" value="2Y">
+            <label class="btn btn-outline-primary" for="p2y">2Y</label>
+
+            <input type="radio" class="btn-check" name="period" id="p5y" value="5Y">
+            <label class="btn btn-outline-primary" for="p5y">5Y</label>
+
+            <input type="radio" class="btn-check" name="period" id="p10y" value="10Y">
+            <label class="btn btn-outline-primary" for="p10y">10Y</label>
+
+            <input type="radio" class="btn-check" name="period" id="p15y" value="15Y" checked>
+            <label class="btn btn-outline-primary" for="p15y">15Y</label>
+          </div>
+
+          <h5 class="mb-2">2) Univers</h5>
+          <p class="text-muted mb-3">Tous sélectionnés par défaut. Décoche si besoin.</p>
+
+          <div class="row">
+            {% for t in tickers %}
+              <div class="col-6 col-md-4 mb-2">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" name="tickers" value="{{ t }}" id="{{ t }}" checked>
+                  <label class="form-check-label" for="{{ t }}">
+                    {{ ticker_names.get(t, t) }} <span class="text-muted">({{ t }})</span>
+                  </label>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+
+          <div class="d-flex justify-content-end mt-4">
+            <button type="submit" class="btn btn-primary">Lancer les tests</button>
+          </div>
+
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
