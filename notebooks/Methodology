@@ -1,0 +1,480 @@
+{
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "id": "title",
+      "metadata": {},
+      "source": [
+        "# MAMOB V2 — Trend Following Multi-Assets (CAC-like)\n",
+        "\n",
+        "**Objectif** : construire un backtest *trend following* **long-only** multi-actifs, comparer **1 couple** vs **3 couples** de moyennes mobiles, et rendre l’évaluation **robuste** via :\n",
+        "- suppression du *look-ahead bias* (`shift(1)`),\n",
+        "- contrainte **fully invested (0 cash)** via normalisation + fallback,\n",
+        "- métriques **risk-adjusted** (CAGR, vol, Sharpe, MDD, turnover),\n",
+        "- tests de robustesse : **sensibilité aux paramètres** + (**option**) walk-forward IS/OOS.\n",
+        "\n",
+        "> Ce notebook est volontairement **court** : il documente la logique “research” et les preuves principales.\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "id": "imports",
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "import pandas as pd\n",
+        "import numpy as np\n",
+        "import matplotlib.pyplot as plt\n",
+        "import yfinance as yf\n",
+        "\n",
+        "plt.rcParams[\"figure.figsize\"] = (11, 4)\n",
+        "pd.set_option(\"display.max_columns\", 50)\n",
+        "pd.set_option(\"display.width\", 200)\n"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "id": "rq",
+      "metadata": {},
+      "source": [
+        "## 1) Research question & protocole\n",
+        "\n",
+        "### Research question\n",
+        "Est-ce qu’une stratégie trend-following simple basée sur moyennes mobiles, appliquée à un univers multi-actifs (CAC-like), produit une performance **risk-adjusted** supérieure à un benchmark **Buy & Hold equal-weight** ?\n",
+        "\n",
+        "### Hypothèses testées\n",
+        "- **H1** : le signal de trend (MA_short > MA_long) améliore le Sharpe vs Buy & Hold.\n",
+        "- **H2** : la performance n’est pas un artefact de sur-optimisation : elle reste stable sur des variantes proches des paramètres (sensibilité).\n",
+        "- **H3** : 1 couple (ex: 20/100) peut être plus robuste/pratique que 3 couples (moins de degrés de liberté, turnover potentiellement plus faible), **et cela doit se voir dans les tests**.\n",
+        "\n",
+        "### Règles de backtest (anti-pièges)\n",
+        "1) **No look-ahead** : on trade à *t+1* un signal calculé à *t* via `shift(1)`.\n",
+        "2) **No cash** : portefeuille toujours **100% investi** (normalisation quotidienne des poids).\n",
+        "3) **Comparaison complète** : on compare Trend vs Buy & Hold via rendement **et** risque (CAGR, vol, Sharpe, MDD) + turnover."
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "id": "data",
+      "metadata": {},
+      "source": [
+        "## 2) Données\n",
+        "\n",
+        "Pour garder le notebook **rapide**, on illustre sur un sous-univers (8 titres).  \n",
+        "L’app Flask permet de sélectionner un univers plus large.\n",
+        "\n",
+        "> ⚠️ Note : Yahoo Finance peut limiter les requêtes (rate-limit). Si ça échoue, relancer plus tard / changer de réseau / réduire l’univers."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "id": "prices",
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "tickers = [\"AI.PA\",\"MC.PA\",\"OR.PA\",\"BNP.PA\",\"SAN.PA\",\"SU.PA\",\"DG.PA\",\"CAP.PA\"]\n",
+        "\n",
+        "raw = yf.download(\n",
+        "    tickers,\n",
+        "    period=\"15y\",\n",
+        "    auto_adjust=False,\n",
+        "    progress=False,\n",
+        "    group_by=\"column\"\n",
+        ")\n",
+        "\n",
+        "prices = raw[\"Close\"].dropna(how=\"all\")\n",
+        "prices.tail()"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "id": "returns",
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "returns = prices.pct_change().fillna(0)\n",
+        "returns.tail()"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "id": "strategy",
+      "metadata": {},
+      "source": [
+        "## 3) Stratégie : signal MA + anti look-ahead\n",
+        "\n",
+        "### Signal\n",
+        "- Signal haussier si `MA_short > MA_long` ⇒ 1\n",
+        "- Sinon ⇒ 0\n",
+        "\n",
+        "### Pourquoi `shift(1)` ?\n",
+        "Sans `shift(1)`, on utilise la clôture de *t* pour décider et “trader” à *t* → *look-ahead bias*.  \n",
+        "Avec `shift(1)`, le signal calculé à *t* s’applique à *t+1* : backtest méthodologiquement propre."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "id": "signal_fn",
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "def ma_signal(prices: pd.DataFrame, short_w: int, long_w: int) -> pd.DataFrame:\n",
+        "    \"\"\"Binary MA crossover signal, shifted by 1 day to avoid look-ahead.\"\"\"\n",
+        "    ma_s = prices.rolling(short_w).mean()\n",
+        "    ma_l = prices.rolling(long_w).mean()\n",
+        "    sig = (ma_s > ma_l).astype(int)\n",
+        "    return sig.shift(1).fillna(0)\n",
+        "\n",
+        "signal_20_100 = ma_signal(prices, 20, 100)\n",
+        "signal_20_100.tail()"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "id": "weights",
+      "metadata": {},
+      "source": [
+        "## 4) Portefeuille **no cash** : normalisation + fallback\n",
+        "\n",
+        "### Problème\n",
+        "Le signal donne une **exposition relative** par actif (0 ou 1 ; ou en tiers avec 3 couples).  \n",
+        "Mais pour obtenir un portefeuille, il faut imposer la contrainte :\n",
+        "\n",
+        "\\[\n",
+        "\\sum_i w_i(t)=1\n",
+        "\\]\n",
+        "\n",
+        "### Solution (V2)\n",
+        "1) On normalise les expositions chaque jour.\n",
+        "2) Cas critique : si toutes les expositions sont nulles (tout bearish) ⇒ somme=0 ⇒ normalisation impossible.\n",
+        "   - Fallback retenu ici : **conserver les poids de la veille** (réduit le churn).\n",
+        "   - Au tout début (pas de veille) : **equal-weight**.\n",
+        "\n",
+        "> Remarque : ce choix respecte l’hypothèse “no cash”."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "id": "normalize_fn",
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "def normalize_weights_no_cash_with_fallback(exposure: pd.DataFrame) -> pd.DataFrame:\n",
+        "    \"\"\"Normalize exposures to fully invested weights; fallback when all exposures are 0.\"\"\"\n",
+        "    exposure = exposure.clip(lower=0)\n",
+        "    row_sum = exposure.sum(axis=1)\n",
+        "    w = exposure.div(row_sum.replace(0, np.nan), axis=0)\n",
+        "    w = w.ffill()  # keep last weights if sum=0\n",
+        "    w = w.fillna(1.0 / exposure.shape[1])  # initial equal-weight\n",
+        "    return w\n",
+        "\n",
+        "weights_1 = normalize_weights_no_cash_with_fallback(signal_20_100)\n",
+        "weights_1.sum(axis=1).tail()"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "id": "backtest1",
+      "metadata": {},
+      "source": [
+        "## 5) Backtest Trend (1 couple) + benchmark Buy & Hold\n",
+        "\n",
+        "On calcule :\n",
+        "\\[\n",
+        "r_p(t) = \\sum_i w_i(t) r_i(t)\n",
+        "\\]\n",
+        "et l’equity :\n",
+        "\\[\n",
+        "Equity(t)=\\prod_{u \\le t}(1+r_p(u))\n",
+        "\\]\n",
+        "\n",
+        "Benchmark : Buy & Hold **equal-weight**, fully invested."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "id": "bt1",
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "def buy_hold_equal_weight(returns: pd.DataFrame) -> pd.Series:\n",
+        "    n = returns.shape[1]\n",
+        "    ew = np.repeat(1.0 / n, n)\n",
+        "    return (returns * ew).sum(axis=1)\n",
+        "\n",
+        "port_ret_1 = (weights_1 * returns).sum(axis=1)\n",
+        "equity_1 = (1 + port_ret_1).cumprod()\n",
+        "\n",
+        "bh_ret = buy_hold_equal_weight(returns)\n",
+        "bh_equity = (1 + bh_ret).cumprod()\n",
+        "\n",
+        "pd.DataFrame({\"Trend (20/100)\": equity_1, \"Buy&Hold EW\": bh_equity}).dropna().plot(\n",
+        "    title=\"Equity curves — Trend 1-couple vs Buy & Hold\"\n",
+        ")\n",
+        "plt.show()"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "id": "triple",
+      "metadata": {},
+      "source": [
+        "## 6) 1 couple vs 3 couples (conviction en tiers)\n",
+        "\n",
+        "### Construction “3 couples”\n",
+        "On prend 3 couples (fast/medium/slow), on calcule 3 signaux binaires, puis :\n",
+        "\n",
+        "\\[\n",
+        "exposure_i(t)=\\frac{signal_1+signal_2+signal_3}{3} \\in \\{0,1/3,2/3,1\\}\n",
+        "\\]\n",
+        "\n",
+        "Puis on **normalise** pour rester fully invested.\n",
+        "\n",
+        "👉 Ici on compare **empiriquement** : Sharpe/MDD/turnover entre 1 et 3 couples."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "id": "bt3",
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "triple = [(12, 60), (24, 120), (48, 200)]\n",
+        "\n",
+        "signals = [ma_signal(prices, s, l) for (s, l) in triple]\n",
+        "exposure_3 = sum(signals) / len(signals)\n",
+        "\n",
+        "weights_3 = normalize_weights_no_cash_with_fallback(exposure_3)\n",
+        "port_ret_3 = (weights_3 * returns).sum(axis=1)\n",
+        "equity_3 = (1 + port_ret_3).cumprod()\n",
+        "\n",
+        "pd.DataFrame({\"Trend 1-couple\": equity_1, \"Trend 3-couples\": equity_3, \"Buy&Hold\": bh_equity}).dropna().plot(\n",
+        "    title=\"Equity curves — 1-couple vs 3-couples (and Buy&Hold)\"\n",
+        ")\n",
+        "plt.show()"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "id": "metrics",
+      "metadata": {},
+      "source": [
+        "## 7) KPIs “pro” : performance + risque + churn\n",
+        "\n",
+        "On calcule :\n",
+        "- **Total return**\n",
+        "- **CAGR** (annualisé)\n",
+        "- **Vol annualisée**\n",
+        "- **Sharpe (rf=0)**\n",
+        "- **Max Drawdown (MDD)**\n",
+        "- **Turnover moyen** (proxy coûts / churn)\n",
+        "\n",
+        "Ces métriques permettent une comparaison complète (et pas uniquement “ça monte”)."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "id": "kpis",
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "def annualize_return(equity: pd.Series) -> float:\n",
+        "    if len(equity) < 2:\n",
+        "        return float(\"nan\")\n",
+        "    total = equity.iloc[-1] / equity.iloc[0] - 1\n",
+        "    return (1 + total) ** (252 / len(equity)) - 1\n",
+        "\n",
+        "def annualize_vol(ret: pd.Series) -> float:\n",
+        "    return float(ret.std() * np.sqrt(252))\n",
+        "\n",
+        "def sharpe_ratio(ann_ret: float, ann_vol: float) -> float:\n",
+        "    if ann_vol == 0 or np.isnan(ann_vol):\n",
+        "        return float(\"nan\")\n",
+        "    return float(ann_ret / ann_vol)\n",
+        "\n",
+        "def max_drawdown(equity: pd.Series) -> float:\n",
+        "    peak = equity.cummax()\n",
+        "    dd = equity / peak - 1\n",
+        "    return float(dd.min())\n",
+        "\n",
+        "def turnover_from_weights(weights: pd.DataFrame) -> pd.Series:\n",
+        "    return (weights - weights.shift(1).fillna(0)).abs().sum(axis=1)\n",
+        "\n",
+        "def kpis(name: str, equity: pd.Series, ret: pd.Series, weights: pd.DataFrame) -> pd.Series:\n",
+        "    total = equity.iloc[-1] / equity.iloc[0] - 1\n",
+        "    ann = annualize_return(equity)\n",
+        "    vol = annualize_vol(ret)\n",
+        "    sh = sharpe_ratio(ann, vol)\n",
+        "    mdd = max_drawdown(equity)\n",
+        "    to_mean = float(turnover_from_weights(weights).mean())\n",
+        "    return pd.Series(\n",
+        "        {\"Total Return\": total, \"CAGR\": ann, \"Vol\": vol, \"Sharpe\": sh, \"MaxDD\": mdd, \"Turnover_mean\": to_mean},\n",
+        "        name=name\n",
+        "    )\n",
+        "\n",
+        "kpi_table = pd.concat([\n",
+        "    kpis(\"Trend 1-couple (20/100)\", equity_1, port_ret_1, weights_1),\n",
+        "    kpis(\"Trend 3-couples (12/60|24/120|48/200)\", equity_3, port_ret_3, weights_3),\n",
+        "    kpis(\"Buy&Hold EW\", bh_equity, bh_ret, pd.DataFrame(np.repeat(1/returns.shape[1], returns.shape[1]), index=returns.index, columns=returns.columns)),\n",
+        "], axis=1).T\n",
+        "\n",
+        "# pretty display\n",
+        "disp = kpi_table.copy()\n",
+        "for col in [\"Total Return\",\"CAGR\",\"Vol\",\"MaxDD\"]:\n",
+        "    disp[col] = (disp[col] * 100).round(2)\n",
+        "disp[\"Sharpe\"] = disp[\"Sharpe\"].round(2)\n",
+        "disp[\"Turnover_mean\"] = disp[\"Turnover_mean\"].round(3)\n",
+        "disp"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "id": "sharpe_turnover_plot",
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "plt.figure(figsize=(8,4))\n",
+        "plt.scatter(kpi_table[\"Turnover_mean\"], kpi_table[\"Sharpe\"])\n",
+        "for name in kpi_table.index:\n",
+        "    plt.annotate(name, (kpi_table.loc[name,\"Turnover_mean\"], kpi_table.loc[name,\"Sharpe\"]))\n",
+        "plt.xlabel(\"Average turnover (proxy costs)\")\n",
+        "plt.ylabel(\"Sharpe\")\n",
+        "plt.title(\"Trade-off: Sharpe vs Turnover\")\n",
+        "plt.show()"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "id": "robust",
+      "metadata": {},
+      "source": [
+        "## 8) Robustness check : sensibilité aux paramètres autour de 20/100\n",
+        "\n",
+        "Même si 20/100 marche, il faut vérifier qu’on n’est pas sur un point “chanceux”.  \n",
+        "On teste une petite grille autour de (20, 100) et on observe la distribution des Sharpe / MDD / turnover.\n",
+        "\n",
+        "👉 Si 20/100 est proche du centre d’une zone de bons résultats, c’est un argument empirique fort."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "id": "grid",
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "candidates = []\n",
+        "for s in [10, 15, 20, 25, 30]:\n",
+        "    for l in [80, 90, 100, 110, 120]:\n",
+        "        if s < l:\n",
+        "            candidates.append((s,l))\n",
+        "\n",
+        "rows = []\n",
+        "for s,l in candidates:\n",
+        "    expo = ma_signal(prices, s, l)\n",
+        "    w = normalize_weights_no_cash_with_fallback(expo)\n",
+        "    r = (w * returns).sum(axis=1)\n",
+        "    eq = (1+r).cumprod()\n",
+        "    rows.append({\n",
+        "        \"pair\": f\"{s}/{l}\",\n",
+        "        \"CAGR\": annualize_return(eq),\n",
+        "        \"Vol\": annualize_vol(r),\n",
+        "        \"Sharpe\": sharpe_ratio(annualize_return(eq), annualize_vol(r)),\n",
+        "        \"MaxDD\": max_drawdown(eq),\n",
+        "        \"Turnover\": float(turnover_from_weights(w).mean())\n",
+        "    })\n",
+        "\n",
+        "grid = pd.DataFrame(rows).sort_values(\"Sharpe\", ascending=False).reset_index(drop=True)\n",
+        "grid.head(10)"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "id": "grid_hist",
+      "metadata": {},
+      "outputs": [],
+      "source": [
+        "grid[\"Sharpe\"].hist(bins=18)\n",
+        "plt.title(\"Sharpe distribution across MA candidates (sensitivity check)\")\n",
+        "plt.xlabel(\"Sharpe\")\n",
+        "plt.show()"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "id": "optional_wf",
+      "metadata": {},
+      "source": [
+        "## 9) (Option) Walk-forward IS/OOS — sélection défendable\n",
+        "\n",
+        "Dans l’application Flask (V2), on implémente un **walk-forward** :\n",
+        "- split temporel : **70% IS** / **30% OOS**\n",
+        "- sélection du meilleur couple (ou triple) sur IS (ex: meilleur Sharpe IS)\n",
+        "- évaluation reportée sur OOS (vraie performance hors-échantillon)\n",
+        "\n",
+        "👉 Dans ce notebook court, on ne ré-implémente pas tout le moteur walk-forward ; le code et les diagnostics sont dans l’app.\n",
+        "\n",
+        "Ce que tu peux écrire dans un reporting :\n",
+        "- `IS` sert à choisir le paramètre\n",
+        "- `OOS` sert à juger la stratégie\n",
+        "- on ajoute aussi une **stabilité OOS** en 3 blocs (Sharpe bloc1/2/3) pour éviter qu’un bon résultat dépende d’une seule sous-période."
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "id": "issues",
+      "metadata": {},
+      "source": [
+        "## 10) Difficultés rencontrées & solutions\n",
+        "\n",
+        "1) **Look-ahead bias** → corrigé par `shift(1)`.\n",
+        "\n",
+        "2) **Cash implicite** (somme des expositions < 1) → on impose **fully invested** via normalisation.\n",
+        "\n",
+        "3) **Cas bearish global** (tous signaux à 0) → fallback **keep last weights** (réduit le churn) + equal-weight au début.\n",
+        "\n",
+        "4) **Sur-optimisation des paramètres** → (dans l’app) walk-forward IS/OOS + diagnostics.\n",
+        "\n",
+        "5) **Qualité / disponibilité des données Yahoo** → parfois rate-limit : limiter l’univers, relancer plus tard, batch + retries dans l’app."
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "id": "conclusion",
+      "metadata": {},
+      "source": [
+        "## 11) Conclusion (résumé court)\n",
+        "\n",
+        "On est passés d’un backtest simple (V1) à une version V2 plus “défendable” :\n",
+        "- backtest sans biais (shift(1))\n",
+        "- portefeuille **no cash** (normalisation + fallback)\n",
+        "- comparaison complète Trend vs Buy&Hold (CAGR/Vol/Sharpe/MDD/Turnover)\n",
+        "- preuves de robustesse : sensibilité aux paramètres (grid), et (dans l’app) walk-forward IS/OOS + diagnostics.\n",
+        "\n",
+        "👉 Prochaines étapes naturelles : intégrer des coûts explicites (slippage/fees), et tester sur un univers plus large/périodes plus longues."
+      ]
+    }
+  ],
+  "metadata": {
+    "kernelspec": {
+      "display_name": "Python 3",
+      "language": "python",
+      "name": "python3"
+    },
+    "language_info": {
+      "name": "python"
+    }
+  },
+  "nbformat": 4,
+  "nbformat_minor": 5
+}
