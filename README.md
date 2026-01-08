@@ -2,13 +2,11 @@
 
 Backtest **trend following** multi-actifs (univers CAC40-like) avec comparaison **1-couple** vs **3-couples** de moyennes mobiles, sélection **walk-forward** (70% IS / 30% OOS) et diagnostics de robustesse.
 
-Accès à l'app: https://momob-trend-following.onrender.com/
-
 ## Contenu
 - `app.py` : moteur de backtest + routes Flask (UI + diagnostics)
 - `main.py` : lance l’interface web
 - `templates/` : pages HTML (résultats + diagnostics)
-- `notebooks/MAMOB_V2_Methodology.ipynb` : notebook expliquant la démarche (V1 → V2), difficultés et choix
+- `notebooks/Methodology.ipynb` : notebook expliquant la démarche (V1 → V2), difficultés et choix
 
 ## Installation
 ```bash
@@ -20,6 +18,8 @@ pip install -r requirements.txt
 python main.py
 ```
 Puis ouvrir : `http://127.0.0.1:5002`
+
+Alternative: Lancer l'applcation en ligne via: https://momob-trend-following.onrender.com/
 
 ## Notes
 - Les données proviennent de **Yahoo Finance** via `yfinance` (qualité variable selon les tickers/périodes).
