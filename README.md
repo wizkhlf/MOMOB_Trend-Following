@@ -6,7 +6,8 @@ Backtest **trend following** multi-actifs (univers CAC40-like) avec comparaison 
 - `app.py` : moteur de backtest + routes Flask (UI + diagnostics)
 - `main.py` : lance l’interface web
 - `templates/` : pages HTML (résultats + diagnostics)
-- `notebooks/Methodology.ipynb` : notebook expliquant la démarche (V1 → V2), difficultés et choix
+- `notebooks/Methodology.ipynb` : notebook expliquant la démarche , difficultés et choix
+- `notebooks/research_research.ipynb` : rapport pdf de recherche
 
 ## Installation
 ```bash
