@@ -1,8 +1,8 @@
 # MAMOB-V2-Trend-Following
 
-Accès à l'app: https://momob-trend-following.onrender.com/
-
 Backtest **trend following** multi-actifs (univers CAC40-like) avec comparaison **1-couple** vs **3-couples** de moyennes mobiles, sélection **walk-forward** (70% IS / 30% OOS) et diagnostics de robustesse.
+
+Accès à l'app: https://momob-trend-following.onrender.com/
 
 ## Contenu
 - `app.py` : moteur de backtest + routes Flask (UI + diagnostics)
